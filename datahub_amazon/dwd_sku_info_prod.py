@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS {TARGET_DB}.{TARGET_TABLE} (
     promo STRING,
     sell_count_str STRING,
     sell_count BIGINT,
-    vague_sell_count STRING,
+    vague_sell_count BIGINT,
     sell_count_type STRING,
     color STRING,
     size STRING,
@@ -96,23 +96,25 @@ PARTITION_DICT = None
 
 # ==================== 销量解析逻辑 ====================
 def get_sales_parsing_logic():
-    """增强的销量解析SQL逻辑"""
+    """简化的销量解析逻辑，按需求实现"""
     return """
             CASE 
-                WHEN lower(sell_count_str_raw) RLIKE '\\\\d+\\\\.?\\\\d*\\\\s*k(\\\\+|\\\\s|$)'
-                THEN cast(regexp_extract(lower(sell_count_str_raw), '(\\\\d+\\\\.?\\\\d*)', 1) as double) * 1000
-                WHEN lower(sell_count_str_raw) RLIKE '\\\\d+\\\\.?\\\\d*\\\\s*w(\\\\+|\\\\s|$)'  
-                THEN cast(regexp_extract(lower(sell_count_str_raw), '(\\\\d+\\\\.?\\\\d*)', 1) as double) * 10000
-                WHEN lower(sell_count_str_raw) RLIKE '\\\\d+\\\\+?\\\\s*(mal|times).*(monat|month)'
-                THEN cast(regexp_extract(lower(sell_count_str_raw), '(\\\\d+)', 1) as double)
-                WHEN lower(sell_count_str_raw) RLIKE '^\\\\d+\\\\+.*'
-                THEN cast(regexp_extract(lower(sell_count_str_raw), '(\\\\d+)', 1) as double)
-                WHEN sell_count_str_raw RLIKE '^\\\\d{1,3}(,\\\\d{3})*$'
-                THEN cast(regexp_replace(sell_count_str_raw, ',', '') as double)
-                WHEN sell_count_str_raw RLIKE '^\\\\d+\\\\.?\\\\d*$'
-                THEN cast(sell_count_str_raw as double)
-                WHEN sell_count_str_raw RLIKE '\\\\d+'
-                THEN cast(regexp_extract(sell_count_str_raw, '(\\\\d+)', 1) as double)
+                -- 日本地区特殊处理：取"過去1か月で"后面和"点以上購入"前面的数字
+                WHEN region_raw = 'JP' AND sell_count_str_raw LIKE '%過去1か月で%' AND sell_count_str_raw LIKE '%点以上購入%'
+                THEN CASE 
+                    WHEN regexp_extract(sell_count_str_raw, '過去1か月で([0-9]+\\\\.?[0-9]*).*点以上購入', 1) != ''
+                    THEN cast(regexp_extract(sell_count_str_raw, '過去1か月で([0-9]+\\\\.?[0-9]*).*点以上購入', 1) as double)
+                    ELSE NULL
+                END
+                -- 其他地区：取数字部分，k/mil乘以1000，w乘以10000
+                WHEN region_raw != 'JP' AND regexp_extract(sell_count_str_raw, '([0-9]+\\\\.?[0-9]*)', 1) != ''
+                THEN CASE 
+                    WHEN lower(sell_count_str_raw) LIKE '%k%' OR lower(sell_count_str_raw) LIKE '%mil%'
+                    THEN cast(regexp_extract(sell_count_str_raw, '([0-9]+\\\\.?[0-9]*)', 1) as double) * 1000
+                    WHEN lower(sell_count_str_raw) LIKE '%w%'
+                    THEN cast(regexp_extract(sell_count_str_raw, '([0-9]+\\\\.?[0-9]*)', 1) as double) * 10000
+                    ELSE cast(regexp_extract(sell_count_str_raw, '([0-9]+\\\\.?[0-9]*)', 1) as double)
+                END
                 ELSE NULL
             END
     """
@@ -201,11 +203,7 @@ def dumper_menu_v1(spark, calc_partition, table_config):
             
             CASE 
                 WHEN vague_sell_count_parsed IS NOT NULL 
-                THEN CASE 
-                    WHEN vague_sell_count_parsed = cast(vague_sell_count_parsed as bigint)
-                    THEN cast(cast(vague_sell_count_parsed as bigint) as string)
-                    ELSE cast(vague_sell_count_parsed as string)
-                END
+                THEN cast(round(vague_sell_count_parsed) as bigint)
                 ELSE NULL
             END as vague_sell_count,
             
@@ -412,11 +410,7 @@ def dumper_menu_detail_v1(spark, calc_partition, table_config):
             
             CASE 
                 WHEN vague_sell_count_parsed IS NOT NULL 
-                THEN CASE 
-                    WHEN vague_sell_count_parsed = cast(vague_sell_count_parsed as bigint)
-                    THEN cast(cast(vague_sell_count_parsed as bigint) as string)
-                    ELSE cast(vague_sell_count_parsed as string)
-                END
+                THEN cast(round(vague_sell_count_parsed) as bigint)
                 ELSE NULL
             END as vague_sell_count,
             
@@ -457,15 +451,21 @@ def dumper_menu_detail_v1(spark, calc_partition, table_config):
             product_image as first_image,
             CASE 
                 WHEN secondary_image IS NOT NULL AND aplus_images IS NOT NULL
-                THEN concat('[', 
-                     regexp_replace(secondary_image, '\\\\|', ','), 
-                     ',',
-                     regexp_replace(aplus_images, '\\\\|', ','),
-                     ']')
+                THEN CASE 
+                    -- 如果两个字段相同，只保留一个（避免完全重复）
+                    WHEN secondary_image = aplus_images 
+                    THEN concat('[\"', replace(secondary_image, ' | ', '\",\"'), '\"]')
+                    -- 如果不同，简单合并（基础去重：避免字段级重复）
+                    ELSE concat('[\"', 
+                         replace(secondary_image, ' | ', '\",\"'), 
+                         '\",\"',
+                         replace(aplus_images, ' | ', '\",\"'),
+                         '\"]')
+                END
                 WHEN secondary_image IS NOT NULL
-                THEN concat('[', regexp_replace(secondary_image, '\\\\|', ','), ']')
+                THEN concat('[\"', replace(secondary_image, ' | ', '\",\"'), '\"]')
                 WHEN aplus_images IS NOT NULL  
-                THEN concat('[', regexp_replace(aplus_images, '\\\\|', ','), ']')
+                THEN concat('[\"', replace(aplus_images, ' | ', '\",\"'), '\"]')
                 ELSE NULL
             END as imags,
             video,
@@ -608,6 +608,7 @@ def main():
     # 关闭Spark会话
     spark.stop()
     impala.execute(f"invalidate metadata {TARGET_DB}.{TARGET_TABLE}")
+    impala.execute(f"DROP INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE} PARTITION(dt='{CALC_PARTITION}')")
     impala.execute(f"COMPUTE INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE}")
 
 if __name__ == '__main__':
