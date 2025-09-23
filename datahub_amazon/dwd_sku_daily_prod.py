@@ -450,8 +450,10 @@ def main():
     
     # 性能优化配置
     spark.sql(f'SET spark.sql.shuffle.partitions={PARTITION_NUM}')
-    spark.sql('SET spark.sql.adaptive.enabled=true')
-    spark.sql('SET spark.sql.adaptive.coalescePartitions=true')
+    spark.conf.set("spark.sql.adaptive.enabled", "true")
+    spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", "true")
+    spark.conf.set("spark.sql.adaptive.skewJoin.enabled", "true")
+    spark.conf.set("spark.sql.adaptive.localShuffleReader.enabled", "true")
     
     # 数据提取和转换
     df = dumper_daily_sku(spark, CALC_PARTITION)
@@ -461,9 +463,40 @@ def main():
     
     # 关闭Spark会话
     spark.stop()
-    impala.execute(f"invalidate metadata {TARGET_DB}.{TARGET_TABLE}")
-    impala.execute(f"DROP INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE} PARTITION(dt='{CALC_PARTITION}')")
-    impala.execute(f"COMPUTE INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE}")
+    
+    # 刷新元数据和统计信息
+    try:
+        print(f"开始刷新元数据: {TARGET_DB}.{TARGET_TABLE}")
+        impala.execute(f"invalidate metadata {TARGET_DB}.{TARGET_TABLE}")
+        print("✅ invalidate metadata 成功")
+        
+        print(f"删除分区统计信息: dt='{CALC_PARTITION}'")
+        impala.execute(f"DROP INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE} PARTITION(dt='{CALC_PARTITION}')")
+        print("✅ DROP INCREMENTAL STATS 成功")
+        
+        print("重新计算统计信息...")
+        impala.execute(f"COMPUTE INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE}")
+        print("✅ COMPUTE INCREMENTAL STATS 成功")
+        
+    except Exception as e:
+        print(f"❌ 元数据刷新失败: {e}")
+        # 尝试重新创建 Impala 连接
+        try:
+            print("尝试重新创建 Impala 连接...")
+            impala_new = new_impala_connector()
+            impala_new.execute(f"invalidate metadata {TARGET_DB}.{TARGET_TABLE}")
+            impala_new.execute(f"DROP INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE} PARTITION(dt='{CALC_PARTITION}')")
+            impala_new.execute(f"COMPUTE INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE}")
+            print("✅ 使用新连接刷新元数据成功")
+        except Exception as e2:
+            print(f"❌ 重新连接后仍然失败: {e2}")
+    
+    finally:
+        # 确保连接关闭
+        try:
+            impala.close()
+        except:
+            pass
 
 if __name__ == "__main__":
     exit(main())
