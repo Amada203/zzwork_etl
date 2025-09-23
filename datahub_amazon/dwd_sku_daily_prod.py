@@ -153,22 +153,18 @@ def dumper_daily_sku(spark, calc_partition):
     
     base_query = f"""
     WITH source_data AS (
-        SELECT *,
-        -- 为每条记录生成一个唯一的sku_id，优先使用非空的sku_id
-        COALESCE(
-            NULLIF(sku_id, ''),
-            CONCAT('generated_', ROW_NUMBER() OVER (PARTITION BY region, dt ORDER BY {priority_case_statement}, snapshot_time DESC))
-        ) as optimized_sku_id
+        SELECT *
         FROM {UPSTREAM_TABLE}
         WHERE dt = '{calc_partition}'
           AND region IS NOT NULL AND region != ''
+          AND sku_id IS NOT NULL AND sku_id != ''
         {limit_clause}
     ),
     
     -- 收集所有非空且不重复的extra_json
     extra_json_collected AS (
         SELECT 
-            optimized_sku_id,
+            sku_id,
             region,
             dt,
             COLLECT_SET(
@@ -179,7 +175,7 @@ def dumper_daily_sku(spark, calc_partition):
                 END
             ) as extra_json_list
         FROM source_data
-        GROUP BY optimized_sku_id, region, dt
+        GROUP BY sku_id, region, dt
     ),
     
     
@@ -188,116 +184,116 @@ def dumper_daily_sku(spark, calc_partition):
     -- 对每个字段分别取最优值：当天非空非null，etl_source优先，snapshot time最晚
     field_optimized AS (
         SELECT 
-            optimized_sku_id as sku_id,
+            sku_id,
             region,
             dt,
             
             FIRST_VALUE(if(product_id IS NULL OR product_id = '', NULL, product_id)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as product_id,
             
             FIRST_VALUE(if(product_title IS NULL OR product_title = '', NULL, product_title)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as product_title,
             
             FIRST_VALUE(if(url IS NULL OR url = '', NULL, url)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as url,
             
             FIRST_VALUE(if(color IS NULL OR color = '', NULL, color)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as color,
             
             FIRST_VALUE(if(size IS NULL OR size = '', NULL, size)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as size,
             
             FIRST_VALUE(if(brand IS NULL OR brand = '', NULL, brand)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as brand,
             
             FIRST_VALUE(if(manufacturer IS NULL OR manufacturer = '', NULL, manufacturer)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as manufacturer,
             
             FIRST_VALUE(if(has_sku IS NULL, NULL, has_sku)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as has_sku,
             
             FIRST_VALUE(if(variant_information IS NULL OR variant_information = '', NULL, variant_information)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as variant_information,
             
             FIRST_VALUE(if(category IS NULL OR category = '', NULL, category)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as category,
             
             FIRST_VALUE(if(sub_category IS NULL OR sub_category = '', NULL, sub_category)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as sub_category,
             
             FIRST_VALUE(if(seller IS NULL OR seller = '', NULL, seller)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as seller,
             
             FIRST_VALUE(if(seller_id IS NULL OR seller_id = '', NULL, seller_id)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as seller_id,
             
             FIRST_VALUE(if(first_image IS NULL OR first_image = '', NULL, first_image)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as first_image,
             
             FIRST_VALUE(if(imags IS NULL OR imags = '', NULL, imags)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as imags,
             
             FIRST_VALUE(if(video IS NULL OR video = '', NULL, video)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as video,
             
             FIRST_VALUE(if(specifications IS NULL OR specifications = '', NULL, specifications)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as specifications,
             
             FIRST_VALUE(if(additional_description IS NULL OR additional_description = '', NULL, additional_description)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as additional_description,
             
             -- extra_json 处理：取优先级最高的非空值
             FIRST_VALUE(if(extra_json IS NOT NULL AND extra_json != '' AND extra_json != '{empty_json}', extra_json, NULL)) IGNORE NULLS OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as extra_json,
             
             CAST(NULL AS STRING) as etl_source,
             
             FIRST_VALUE(snapshot_time) OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as snapshot_time,
             
             -- 添加行号用于去重
             ROW_NUMBER() OVER (
-                PARTITION BY optimized_sku_id, region, dt 
+                PARTITION BY sku_id, region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
             ) as rn
         FROM source_data
@@ -338,7 +334,7 @@ def dumper_daily_sku(spark, calc_partition):
             COALESCE(ejc.extra_json_list, ARRAY()) as extra_json,
             d.etl_source, d.snapshot_time, d.region, d.dt
         FROM deduplicated d
-        LEFT JOIN extra_json_collected ejc ON d.sku_id = ejc.optimized_sku_id 
+        LEFT JOIN extra_json_collected ejc ON d.sku_id = ejc.sku_id 
             AND d.region = ejc.region AND d.dt = ejc.dt
     )
      
@@ -359,7 +355,7 @@ def dumper_daily_sku(spark, calc_partition):
     # 获取需要合并extra_json的数据
     merge_query = f"""
     SELECT 
-        optimized_sku_id,
+        sku_id,
         region,
         dt,
         COLLECT_LIST(extra_json) as extra_json_list
@@ -368,7 +364,7 @@ def dumper_daily_sku(spark, calc_partition):
             FIRST_VALUE(if(sku_id IS NULL OR sku_id = '', NULL, sku_id)) IGNORE NULLS OVER (
                 PARTITION BY region, dt 
                 ORDER BY {priority_case_statement}, snapshot_time DESC
-            ) as optimized_sku_id,
+            ) as sku_id,
             region,
             dt,
             extra_json,
@@ -379,7 +375,7 @@ def dumper_daily_sku(spark, calc_partition):
           AND region IS NOT NULL AND region != ''
           AND extra_json IS NOT NULL AND extra_json != '' AND extra_json != '{empty_json}'
     ) ranked_data
-    GROUP BY optimized_sku_id, region, dt
+    GROUP BY sku_id, region, dt
     """
     
     merge_df = execute_sql(merge_query, spark.sql)
@@ -388,12 +384,12 @@ def dumper_daily_sku(spark, calc_partition):
     merged_json_df = merge_df.withColumn(
         "merged_extra_json", 
         merge_json_udf_func("extra_json_list")
-    ).select("optimized_sku_id", "region", "dt", "merged_extra_json")
+    ).select("sku_id", "region", "dt", "merged_extra_json")
     
     # 合并结果
     final_df = df.join(
         merged_json_df, 
-        (df.sku_id == merged_json_df.optimized_sku_id) & 
+        (df.sku_id == merged_json_df.sku_id) & 
         (df.region == merged_json_df.region) & 
         (df.dt == merged_json_df.dt), 
         "left"
