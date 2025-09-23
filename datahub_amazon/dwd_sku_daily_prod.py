@@ -24,7 +24,7 @@ REFRESH_STATS = False
 EMR = True
 PARTITION_NUM = 400
 COMPRESSION = 'snappy'
-TEST_LIMIT = 1000  # None
+TEST_LIMIT = None  # 生产环境不使用限制
 UPSTREAM_TABLE = 'datahub_amazon.dwd_sku_info'
 FEISHU_URL = 'https://yimiandata.feishu.cn/wiki/E81Zw4jK7iJYbGkh5Ejcc3vjnmh?sheet=h2Kd9N'
 
@@ -142,6 +142,26 @@ merge_json_udf_func = udf(merge_json_udf, StringType())
 def dumper_daily_sku(spark, calc_partition):
     """处理dwd_sku_info -> dwd_sku_daily 日度表"""
     limit_clause = f"LIMIT {TEST_LIMIT}" if TEST_LIMIT else ""
+    
+    # 先检查上游表数据量
+    check_sql = f"""
+    SELECT COUNT(*) as total_count
+    FROM {UPSTREAM_TABLE}
+    WHERE dt = '{calc_partition}'
+      AND region IS NOT NULL AND region != ''
+    """
+    try:
+        result = spark.sql(check_sql).collect()
+        total_count = result[0]['total_count'] if result else 0
+        print(f"📊 上游表 {UPSTREAM_TABLE} 在 {calc_partition} 的数据量: {total_count}")
+        
+        if total_count == 0:
+            print(f"⚠️  警告: 上游表在 {calc_partition} 没有数据，ETL将返回空结果")
+            # 返回空的DataFrame
+            empty_schema = spark.sql(f"SELECT * FROM {UPSTREAM_TABLE} LIMIT 0").schema
+            return spark.createDataFrame([], empty_schema)
+    except Exception as e:
+        print(f"❌ 检查上游表数据量失败: {e}")
     
     # 获取etl_source优先级排序
     etl_source_priority = get_etl_source_priority()
@@ -409,6 +429,14 @@ def dumper_daily_sku(spark, calc_partition):
 
 def write_to_hive(spark, df):
     """写入Hive表 - 动态分区覆盖写入"""
+    # 检查数据量
+    count = df.count()
+    print(f"📊 准备写入 {TARGET_DB}.{TARGET_TABLE} 的数据量: {count}")
+    
+    if count == 0:
+        print("⚠️  警告: 没有数据需要写入，跳过写入操作")
+        return
+    
     # 确保表存在
     spark.sql(DDL)
     
@@ -436,7 +464,9 @@ def write_to_hive(spark, df):
     """
     
     # 执行覆盖写入
+    print("🚀 开始写入数据到Hive表...")
     spark.sql(overwrite_sql)
+    print("✅ 数据写入完成")
 
 # ==================== 主函数 ====================
 def main():
@@ -463,7 +493,9 @@ def main():
     
     # 关闭Spark会话
     spark.stop()
-    
+    # impala.execute(f"invalidate metadata {TARGET_DB}.{TARGET_TABLE}")
+    # impala.execute(f"DROP INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE} PARTITION(dt='{CALC_PARTITION}')")
+    # impala.execute(f"COMPUTE INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE}")
     # 刷新元数据和统计信息
     try:
         print(f"开始刷新元数据: {TARGET_DB}.{TARGET_TABLE}")
@@ -480,16 +512,6 @@ def main():
         
     except Exception as e:
         print(f"❌ 元数据刷新失败: {e}")
-        # 尝试重新创建 Impala 连接
-        try:
-            print("尝试重新创建 Impala 连接...")
-            impala_new = new_impala_connector()
-            impala_new.execute(f"invalidate metadata {TARGET_DB}.{TARGET_TABLE}")
-            impala_new.execute(f"DROP INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE} PARTITION(dt='{CALC_PARTITION}')")
-            impala_new.execute(f"COMPUTE INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE}")
-            print("✅ 使用新连接刷新元数据成功")
-        except Exception as e2:
-            print(f"❌ 重新连接后仍然失败: {e2}")
     
     finally:
         # 确保连接关闭
