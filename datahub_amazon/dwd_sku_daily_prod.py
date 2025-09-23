@@ -181,7 +181,7 @@ def dumper_daily_sku(spark, calc_partition):
     
     
     
-    -- 对每个字段分别取最优值：当天非空非null，etl_source优先，snapshot time最晚
+    -- 对每个字段分别取最优值：每个sku_id取一条最优记录（etl_source优先，snapshot time最晚）
     field_optimized AS (
         SELECT 
             sku_id,
