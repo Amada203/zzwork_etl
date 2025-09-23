@@ -107,20 +107,24 @@ def get_sales_parsing_logic():
                 -- 日本地区特殊处理：取"過去1か月で"后面和"点以上購入"前面的数字
                 WHEN region_raw = 'JP' AND sell_count_str_raw LIKE '%過去1か月で%' AND sell_count_str_raw LIKE '%点以上購入%'
                 THEN CASE 
+                    -- 如果包含万点，则数字乘以10000
+                    WHEN sell_count_str_raw LIKE '%万点%'
+                    THEN cast(regexp_extract(sell_count_str_raw, '過去1か月で([0-9]+\\\\.?[0-9]*).*点以上購入', 1) as double) * 10000
+                    -- 普通点数
                     WHEN regexp_extract(sell_count_str_raw, '過去1か月で([0-9]+\\\\.?[0-9]*).*点以上購入', 1) != ''
                     THEN cast(regexp_extract(sell_count_str_raw, '過去1か月で([0-9]+\\\\.?[0-9]*).*点以上購入', 1) as double)
                     ELSE NULL
                 END
-                -- 其他地区：简洁版本，支持大小写
+                -- 其他地区：支持大小写
                 WHEN region_raw != 'JP' AND regexp_extract(sell_count_str_raw, '([0-9]+\\\\.?[0-9]*)', 1) != ''
                 THEN CASE 
                     -- 如果包含k+或mil，则数字乘以1000
                     WHEN (lower(sell_count_str_raw) LIKE '%k+%' OR lower(sell_count_str_raw) LIKE '%mil%')
-                         AND regexp_extract(lower(sell_count_str_raw), '([0-9]+\\\\.?[0-9]*)\\s*(k\\+|mil)', 1) != ''
+                         --AND regexp_extract(lower(sell_count_str_raw), '([0-9]+\\\\.?[0-9]*)\\s*(k\\+|mil)', 1) != ''
                     THEN cast(regexp_extract(sell_count_str_raw, '([0-9]+\\\\.?[0-9]*)', 1) as double) * 1000
                     -- 如果包含w+，则数字乘以10000
                     WHEN lower(sell_count_str_raw) LIKE '%w+%'
-                         AND regexp_extract(lower(sell_count_str_raw), '([0-9]+\\\\.?[0-9]*)\\s*(w\\+)', 1) != ''
+                         --AND regexp_extract(lower(sell_count_str_raw), '([0-9]+\\\\.?[0-9]*)\\s*(w\\+)', 1) != ''
                     THEN cast(regexp_extract(sell_count_str_raw, '([0-9]+\\\\.?[0-9]*)', 1) as double) * 10000
                     -- 纯数字，无单位
                     ELSE cast(regexp_extract(sell_count_str_raw, '([0-9]+\\\\.?[0-9]*)', 1) as double)
