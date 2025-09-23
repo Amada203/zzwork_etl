@@ -101,7 +101,7 @@ PARTITION_DICT = None
 
 # ==================== 销量解析逻辑 ====================
 def get_sales_parsing_logic():
-    """简化的销量解析逻辑，按需求实现"""
+    """销量解析逻辑：取数字部分，k+/mil乘以1000，w+乘以10000，JP地区特殊处理"""
     return """
             CASE 
                 -- 日本地区特殊处理：取"過去1か月で"后面和"点以上購入"前面的数字
@@ -111,13 +111,18 @@ def get_sales_parsing_logic():
                     THEN cast(regexp_extract(sell_count_str_raw, '過去1か月で([0-9]+\\\\.?[0-9]*).*点以上購入', 1) as double)
                     ELSE NULL
                 END
-                -- 其他地区：取数字部分，k/mil乘以1000，w乘以10000
+                -- 其他地区：简洁版本，支持大小写
                 WHEN region_raw != 'JP' AND regexp_extract(sell_count_str_raw, '([0-9]+\\\\.?[0-9]*)', 1) != ''
                 THEN CASE 
-                    WHEN lower(sell_count_str_raw) LIKE '%k%' OR lower(sell_count_str_raw) LIKE '%mil%'
+                    -- 如果包含k+或mil，则数字乘以1000
+                    WHEN (lower(sell_count_str_raw) LIKE '%k+%' OR lower(sell_count_str_raw) LIKE '%mil%')
+                         AND regexp_extract(lower(sell_count_str_raw), '([0-9]+\\\\.?[0-9]*)\\s*(k\\+|mil)', 1) != ''
                     THEN cast(regexp_extract(sell_count_str_raw, '([0-9]+\\\\.?[0-9]*)', 1) as double) * 1000
-                    WHEN lower(sell_count_str_raw) LIKE '%w%'
+                    -- 如果包含w+，则数字乘以10000
+                    WHEN lower(sell_count_str_raw) LIKE '%w+%'
+                         AND regexp_extract(lower(sell_count_str_raw), '([0-9]+\\\\.?[0-9]*)\\s*(w\\+)', 1) != ''
                     THEN cast(regexp_extract(sell_count_str_raw, '([0-9]+\\\\.?[0-9]*)', 1) as double) * 10000
+                    -- 纯数字，无单位
                     ELSE cast(regexp_extract(sell_count_str_raw, '([0-9]+\\\\.?[0-9]*)', 1) as double)
                 END
                 ELSE NULL
