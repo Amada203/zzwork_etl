@@ -22,7 +22,7 @@ PARTITION_NUM = 400
 COMPRESSION = 'snappy'
 
 # 表处理控制
-PROCESS_TABLES = ['menu_v1', 'menu_detail_v1']
+PROCESS_TABLES = ['menu_v1', 'menu_detail_v1', 'search_only_v1']
 TEST_LIMIT = None
 
 # 上游表配置
@@ -36,6 +36,11 @@ UPSTREAM_TABLES = [
         'table_name': 'datahub_amazon.ods_menu_detail_v1', 
         'etl_source': 'datahub_amazon.ods_menu_detail_v1',
         'table_type': 'menu_detail_v1'
+    },
+    {
+        'table_name': 'datahub_amazon.ods_search_only_v1',
+        'etl_source': 'datahub_amazon.ods_search_only_v1',
+        'table_type': 'search_only_v1'
     }
 ]
 
@@ -519,6 +524,183 @@ def dumper_menu_detail_v1(spark, calc_partition, table_config):
     
     return spark.sql(query)
 
+def dumper_search_only_v1(spark, calc_partition, table_config):
+    """处理ods_search_only_v1表"""
+    limit_clause = f"LIMIT {TEST_LIMIT}" if TEST_LIMIT else ""
+    table_name = table_config['table_name']
+    etl_source = table_config['etl_source']
+    
+    sales_logic = get_sales_parsing_logic()
+    
+    base_query = """
+    WITH base_data AS (
+        SELECT 
+            product_code,
+            product_name,
+            product_url,
+            price,
+            review_rating,
+            number_of_reviews,
+            product_image,
+            batch_id,
+            crawl_status,
+            snapshot_time,
+            dt,
+            'ETL_SOURCE_PLACEHOLDER' as etl_source,
+            sr
+        FROM TABLE_NAME_PLACEHOLDER
+        WHERE dt = 'CALC_PARTITION_PLACEHOLDER'
+          AND udfs.f_get_json_object(replace(sr,'|',''),'$.ulanziregion') IS NOT NULL 
+          AND udfs.f_get_json_object(replace(sr,'|',''),'$.ulanziregion') != ''
+        LIMIT_PLACEHOLDER
+    ),
+    
+    json_extracted AS (
+        SELECT 
+            *,
+            get_json_object(sr, '$.ulanzi|online_price') as sku_online_price_raw,
+            get_json_object(sr, '$.ulanzi|online_price_currency') as sku_online_price_currency_raw,
+            get_json_object(sr, '$.ulanzi|list_price') as sku_list_price_raw,
+            get_json_object(sr, '$.ulanzi|list_price_currency') as sku_list_price_currency_raw,
+            get_json_object(sr, '$.ulanzi|sales_count') as sell_count_str_raw,
+            get_json_object(sr, '$.ulanzi|region') as region_raw
+        FROM base_data
+    ),
+    
+    sales_count_parsed AS (
+        SELECT 
+            *,
+            SALES_LOGIC_PLACEHOLDER as vague_sell_count_parsed
+        FROM json_extracted
+    ),
+    
+    final_transformed AS (
+        SELECT 
+            CAST(NULL AS STRING) as product_id,
+            product_code as sku_id,
+            product_name as product_title,
+            product_url as url,
+            price as sku_online_price,
+            
+            CASE 
+                WHEN sku_online_price_currency_raw IS NOT NULL AND sku_online_price_currency_raw != ''
+                THEN sku_online_price_currency_raw
+                ELSE NULL
+            END as sku_online_price_currency,
+            
+            CASE 
+                WHEN sku_list_price_raw IS NOT NULL AND sku_list_price_raw != '' AND sku_list_price_raw != '0'
+                THEN sku_list_price_raw
+                ELSE NULL
+            END as sku_list_price,
+            
+            CASE 
+                WHEN sku_list_price_currency_raw IS NOT NULL AND sku_list_price_currency_raw != ''
+                THEN sku_list_price_currency_raw
+                ELSE NULL
+            END as sku_list_price_currency,
+            
+            CAST(NULL AS STRING) as promo,
+            
+            CASE 
+                WHEN sell_count_str_raw IS NOT NULL AND sell_count_str_raw != ''
+                THEN sell_count_str_raw
+                ELSE NULL
+            END as sell_count_str,
+            
+            CAST(NULL AS BIGINT) as sell_count,
+            
+            CASE 
+                WHEN vague_sell_count_parsed IS NOT NULL 
+                THEN cast(round(vague_sell_count_parsed) as bigint)
+                ELSE NULL
+            END as vague_sell_count,
+            
+            CASE 
+                WHEN vague_sell_count_parsed IS NOT NULL 
+                THEN 'last_30_count'
+                ELSE NULL
+            END as sell_count_type,
+            
+            CAST(NULL AS STRING) as color,
+            CAST(NULL AS STRING) as size,
+            CAST(NULL AS STRING) as brand,
+            CAST(NULL AS STRING) as manufacturer,
+            CAST(NULL AS INT) as has_sku,
+            CAST(NULL AS STRING) as variant_information,
+            
+            CAST(NULL AS STRING) as category,
+            CAST(NULL AS STRING) as sub_category,
+            CAST(NULL AS STRING) as category_ids,
+            
+            CAST(NULL AS STRING) as seller,
+            CAST(NULL AS STRING) as seller_id,
+            
+            CASE 
+                WHEN review_rating = '' OR review_rating = '0' THEN NULL
+                ELSE review_rating 
+            END as review_rating,
+            
+            CASE 
+                WHEN number_of_reviews = '' OR number_of_reviews = '0' THEN NULL
+                ELSE cast(number_of_reviews as bigint)
+            END as number_of_reviews,
+            
+            product_image as first_image,
+            CAST(NULL AS STRING) as imags,
+            CAST(NULL AS STRING) as video,
+            CAST(NULL AS STRING) as availability,
+            CAST(NULL AS STRING) as inventory,
+            CAST(NULL AS STRING) as comment_count_str,
+            CAST(NULL AS BIGINT) as comment_count,
+            CAST(NULL AS BIGINT) as vague_comment_count,
+            CAST(NULL AS STRING) as specifications,
+            CAST(NULL AS STRING) as additional_description,
+            
+            batch_id,
+            CAST(NULL AS STRING) as task_id,
+            CAST(NULL AS STRING) as project,
+            crawl_status,
+            
+            '{}' as extra_json,
+            snapshot_time,
+            
+            CASE 
+                WHEN region_raw = '' OR region_raw IS NULL THEN NULL
+                ELSE upper(region_raw)
+            END as region,
+            dt,
+            etl_source
+            
+        FROM sales_count_parsed
+        WHERE region_raw IS NOT NULL AND region_raw != ''
+    )
+    
+    SELECT 
+        product_id, sku_id, product_title, url,
+        sku_online_price, sku_online_price_currency, sku_list_price, sku_list_price_currency,
+        promo, sell_count_str, sell_count, vague_sell_count, sell_count_type,
+        color, size, brand, manufacturer, has_sku, variant_information,
+        category, sub_category, category_ids,
+        seller, seller_id,
+        review_rating, number_of_reviews,
+        first_image, imags, video, availability, inventory,
+        comment_count_str, comment_count, vague_comment_count,
+        specifications, additional_description,
+        batch_id, task_id, project, crawl_status,
+        extra_json, snapshot_time,
+        region, dt, etl_source
+    FROM final_transformed
+    """
+    
+    query = base_query.replace('CALC_PARTITION_PLACEHOLDER', calc_partition)
+    query = query.replace('LIMIT_PLACEHOLDER', limit_clause)
+    query = query.replace('TABLE_NAME_PLACEHOLDER', table_name)
+    query = query.replace('ETL_SOURCE_PLACEHOLDER', etl_source)
+    query = query.replace('SALES_LOGIC_PLACEHOLDER', sales_logic)
+    
+    return spark.sql(query)
+
 def dumper_all_tables(spark, calc_partition):
     """处理所有上游表并合并结果"""
     all_dataframes = []
@@ -531,6 +713,8 @@ def dumper_all_tables(spark, calc_partition):
             df = dumper_menu_v1(spark, calc_partition, table_config)
         elif table_config['table_type'] == 'menu_detail_v1':
             df = dumper_menu_detail_v1(spark, calc_partition, table_config)
+        elif table_config['table_type'] == 'search_only_v1':
+            df = dumper_search_only_v1(spark, calc_partition, table_config)
         else:
             raise ValueError(f"Unknown table type: {table_config['table_type']}")
             
