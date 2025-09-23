@@ -143,26 +143,6 @@ def dumper_daily_sku(spark, calc_partition):
     """处理dwd_sku_info -> dwd_sku_daily 日度表"""
     limit_clause = f"LIMIT {TEST_LIMIT}" if TEST_LIMIT else ""
     
-    # 先检查上游表数据量
-    check_sql = f"""
-    SELECT COUNT(*) as total_count
-    FROM {UPSTREAM_TABLE}
-    WHERE dt = '{calc_partition}'
-      AND region IS NOT NULL AND region != ''
-    """
-    try:
-        result = spark.sql(check_sql).collect()
-        total_count = result[0]['total_count'] if result else 0
-        print(f"📊 上游表 {UPSTREAM_TABLE} 在 {calc_partition} 的数据量: {total_count}")
-        
-        if total_count == 0:
-            print(f"⚠️  警告: 上游表在 {calc_partition} 没有数据，ETL将返回空结果")
-            # 返回空的DataFrame
-            empty_schema = spark.sql(f"SELECT * FROM {UPSTREAM_TABLE} LIMIT 0").schema
-            return spark.createDataFrame([], empty_schema)
-    except Exception as e:
-        print(f"❌ 检查上游表数据量失败: {e}")
-    
     # 获取etl_source优先级排序
     etl_source_priority = get_etl_source_priority()
     priority_case_statement = build_priority_case_statement(etl_source_priority)
@@ -174,10 +154,11 @@ def dumper_daily_sku(spark, calc_partition):
     base_query = f"""
     WITH source_data AS (
         SELECT *,
-        FIRST_VALUE(if(sku_id IS NULL OR sku_id = '', NULL, sku_id)) IGNORE NULLS OVER (
-                PARTITION BY  region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
-            ) as optimized_sku_id
+        -- 为每条记录生成一个唯一的sku_id，优先使用非空的sku_id
+        COALESCE(
+            NULLIF(sku_id, ''),
+            CONCAT('generated_', ROW_NUMBER() OVER (PARTITION BY region, dt ORDER BY {priority_case_statement}, snapshot_time DESC))
+        ) as optimized_sku_id
         FROM {UPSTREAM_TABLE}
         WHERE dt = '{calc_partition}'
           AND region IS NOT NULL AND region != ''
@@ -429,14 +410,6 @@ def dumper_daily_sku(spark, calc_partition):
 
 def write_to_hive(spark, df):
     """写入Hive表 - 动态分区覆盖写入"""
-    # 检查数据量
-    count = df.count()
-    print(f"📊 准备写入 {TARGET_DB}.{TARGET_TABLE} 的数据量: {count}")
-    
-    if count == 0:
-        print("⚠️  警告: 没有数据需要写入，跳过写入操作")
-        return
-    
     # 确保表存在
     spark.sql(DDL)
     
@@ -464,9 +437,7 @@ def write_to_hive(spark, df):
     """
     
     # 执行覆盖写入
-    print("🚀 开始写入数据到Hive表...")
     spark.sql(overwrite_sql)
-    print("✅ 数据写入完成")
 
 # ==================== 主函数 ====================
 def main():
