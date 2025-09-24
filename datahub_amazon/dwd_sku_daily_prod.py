@@ -188,100 +188,100 @@ def dumper_daily_sku(spark, calc_partition):
             region,
             dt,
             
-            FIRST_VALUE(if(product_id IS NULL OR product_id = '', NULL, product_id)) IGNORE NULLS OVER (
+            FIRST_VALUE(product_id) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(product_id is not null and product_id !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as product_id,
             
-            FIRST_VALUE(if(product_title IS NULL OR product_title = '', NULL, product_title)) IGNORE NULLS OVER (
+            FIRST_VALUE(product_title) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(product_title is not null and product_title !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as product_title,
             
-            FIRST_VALUE(if(url IS NULL OR url = '', NULL, url)) IGNORE NULLS OVER (
+            FIRST_VALUE(url) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(url is not null and url !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as url,
             
-            FIRST_VALUE(if(color IS NULL OR color = '', NULL, color)) IGNORE NULLS OVER (
+            FIRST_VALUE(color) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(color is not null and color !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as color,
             
-            FIRST_VALUE(if(size IS NULL OR size = '', NULL, size)) IGNORE NULLS OVER (
+            FIRST_VALUE(size) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(size is not null and size !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as size,
             
-            FIRST_VALUE(if(brand IS NULL OR brand = '', NULL, brand)) IGNORE NULLS OVER (
+            FIRST_VALUE(brand) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(brand is not null and brand !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as brand,
             
-            FIRST_VALUE(if(manufacturer IS NULL OR manufacturer = '', NULL, manufacturer)) IGNORE NULLS OVER (
+            FIRST_VALUE(manufacturer) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(manufacturer is not null and manufacturer !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as manufacturer,
             
-            FIRST_VALUE(if(has_sku IS NULL, NULL, has_sku)) IGNORE NULLS OVER (
+            FIRST_VALUE(has_sku) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(has_sku is not null, 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as has_sku,
             
-            FIRST_VALUE(if(variant_information IS NULL OR variant_information = '', NULL, variant_information)) IGNORE NULLS OVER (
+            FIRST_VALUE(variant_information) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(variant_information is not null and variant_information !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as variant_information,
             
-            FIRST_VALUE(if(category IS NULL OR category = '', NULL, category)) IGNORE NULLS OVER (
+            FIRST_VALUE(category) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(category is not null and category !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as category,
             
-            FIRST_VALUE(if(sub_category IS NULL OR sub_category = '', NULL, sub_category)) IGNORE NULLS OVER (
+            FIRST_VALUE(sub_category) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(sub_category is not null and sub_category !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as sub_category,
             
-            FIRST_VALUE(if(seller IS NULL OR seller = '', NULL, seller)) IGNORE NULLS OVER (
+            FIRST_VALUE(seller) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(seller is not null and seller !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as seller,
             
-            FIRST_VALUE(if(seller_id IS NULL OR seller_id = '', NULL, seller_id)) IGNORE NULLS OVER (
+            FIRST_VALUE(seller_id) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(seller_id is not null and seller_id !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as seller_id,
             
-            FIRST_VALUE(if(first_image IS NULL OR first_image = '', NULL, first_image)) IGNORE NULLS OVER (
+            FIRST_VALUE(first_image) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(first_image is not null and first_image !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as first_image,
             
-            FIRST_VALUE(if(imags IS NULL OR imags = '', NULL, imags)) IGNORE NULLS OVER (
+            FIRST_VALUE(imags) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(imags is not null and imags !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as imags,
             
-            FIRST_VALUE(if(video IS NULL OR video = '', NULL, video)) IGNORE NULLS OVER (
+            FIRST_VALUE(video) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(video is not null and video !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as video,
             
-            FIRST_VALUE(if(specifications IS NULL OR specifications = '', NULL, specifications)) IGNORE NULLS OVER (
+            FIRST_VALUE(specifications) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(specifications is not null and specifications !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as specifications,
             
-            FIRST_VALUE(if(additional_description IS NULL OR additional_description = '', NULL, additional_description)) IGNORE NULLS OVER (
+            FIRST_VALUE(additional_description) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(additional_description is not null and additional_description !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as additional_description,
             
             -- extra_json 处理：取优先级最高的非空值
-            FIRST_VALUE(if(extra_json IS NOT NULL AND extra_json != '' AND extra_json != '{empty_json}', extra_json, NULL)) IGNORE NULLS OVER (
+            FIRST_VALUE(extra_json) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(extra_json is not null and extra_json !='' and extra_json != '{empty_json}', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
             ) as extra_json,
             
             CAST(NULL AS STRING) as etl_source,
@@ -343,13 +343,7 @@ def dumper_daily_sku(spark, calc_partition):
     
     # 执行SQL获取基础数据
     df = execute_sql(base_query, spark.sql)
-    
-    # 使用UDF处理extra_json合并（仅在需要时使用）
-    if TEST_LIMIT:
-        # 测试模式：直接返回
-        return df
-    
-    # 生产模式：处理extra_json合并
+    # 处理extra_json合并
     df.createOrReplaceTempView("base_result")
     
     # 获取需要合并extra_json的数据
@@ -361,10 +355,7 @@ def dumper_daily_sku(spark, calc_partition):
         COLLECT_LIST(extra_json) as extra_json_list
     FROM (
         SELECT 
-            FIRST_VALUE(if(sku_id IS NULL OR sku_id = '', NULL, sku_id)) IGNORE NULLS OVER (
-                PARTITION BY region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
-            ) as sku_id,
+            sku_id,
             region,
             dt,
             extra_json,
@@ -372,6 +363,7 @@ def dumper_daily_sku(spark, calc_partition):
             snapshot_time
         FROM {UPSTREAM_TABLE}
         WHERE dt = '{calc_partition}'
+          AND sku_id IS NOT NULL AND sku_id != ''
           AND region IS NOT NULL AND region != ''
           AND extra_json IS NOT NULL AND extra_json != '' AND extra_json != '{empty_json}'
     ) ranked_data
