@@ -1,15 +1,9 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""
-dwd_sku_daily 日度SKU表ETL脚本
-从 datahub_amazon.dwd_sku_info 生成日度汇总表
-每个字段分别取当天非空非null，etl_source优先，snapshot time最晚的值
-"""
 
 import logging
 import json
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import udf, collect_list, when, col
+from pyspark.sql.functions import udf, collect_list, when, col, lit
 from pyspark.sql.types import StringType, ArrayType
 from pigeon.connector import new_impala_connector
 from pigeon.utils import init_logging
@@ -114,7 +108,7 @@ def merge_json_udf(json_list):
     相同key取最优，不同key合并
     """
     if not json_list or len(json_list) == 0:
-        return '{}'
+        return None
     
     merged_dict = {}
     
@@ -130,6 +124,10 @@ def merge_json_udf(json_list):
         except (json.JSONDecodeError, TypeError):
             # 忽略无效的JSON
             continue
+    
+    # 如果合并后字典为空，返回None而不是空JSON对象
+    if not merged_dict:
+        return None
     
     return json.dumps(merged_dict, ensure_ascii=False)
 
@@ -167,7 +165,7 @@ def dumper_daily_sku(spark, calc_partition):
             sku_id,
             region,
             dt,
-            COLLECT_SET(
+            COLLECT_LIST(
                 CASE 
                     WHEN extra_json IS NOT NULL AND extra_json NOT IN ('', '{empty_json}')
                     THEN extra_json
@@ -190,111 +188,111 @@ def dumper_daily_sku(spark, calc_partition):
             
             FIRST_VALUE(product_id) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(product_id is not null and product_id !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(product_id is not null and product_id !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as product_id,
             
             FIRST_VALUE(product_title) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(product_title is not null and product_title !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(product_title is not null and product_title !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as product_title,
             
             FIRST_VALUE(url) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(url is not null and url !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(url is not null and url !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as url,
             
             FIRST_VALUE(color) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(color is not null and color !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(color is not null and color !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as color,
             
             FIRST_VALUE(size) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(size is not null and size !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(size is not null and size !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as size,
             
             FIRST_VALUE(brand) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(brand is not null and brand !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(brand is not null and brand !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as brand,
             
             FIRST_VALUE(manufacturer) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(manufacturer is not null and manufacturer !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(manufacturer is not null and manufacturer !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as manufacturer,
             
             FIRST_VALUE(has_sku) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(has_sku is not null, 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(has_sku is not null, 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as has_sku,
             
             FIRST_VALUE(variant_information) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(variant_information is not null and variant_information !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(variant_information is not null and variant_information !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as variant_information,
             
             FIRST_VALUE(category) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(category is not null and category !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(category is not null and category !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as category,
             
             FIRST_VALUE(sub_category) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(sub_category is not null and sub_category !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(sub_category is not null and sub_category !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as sub_category,
             
             FIRST_VALUE(seller) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(seller is not null and seller !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(seller is not null and seller !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as seller,
             
             FIRST_VALUE(seller_id) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(seller_id is not null and seller_id !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(seller_id is not null and seller_id !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as seller_id,
             
             FIRST_VALUE(first_image) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(first_image is not null and first_image !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(first_image is not null and first_image !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as first_image,
             
             FIRST_VALUE(imags) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(imags is not null and imags !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(imags is not null and imags !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as imags,
             
             FIRST_VALUE(video) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(video is not null and video !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(video is not null and video !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as video,
             
             FIRST_VALUE(specifications) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(specifications is not null and specifications !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(specifications is not null and specifications !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as specifications,
             
             FIRST_VALUE(additional_description) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(additional_description is not null and additional_description !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(additional_description is not null and additional_description !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as additional_description,
             
             -- extra_json 处理：取优先级最高的非空值
             FIRST_VALUE(extra_json) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY if(extra_json is not null and extra_json !='' and extra_json != '{empty_json}', 1, 0) desc, {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(extra_json is not null and extra_json !='' and extra_json != '{empty_json}', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as extra_json,
             
             CAST(NULL AS STRING) as etl_source,
             
             FIRST_VALUE(snapshot_time) OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY if(snapshot_time is not null and snapshot_time !='', 1, 0) desc, {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as snapshot_time,
             
             -- 添加行号用于去重
             ROW_NUMBER() OVER (
                 PARTITION BY sku_id, region, dt 
-                ORDER BY {priority_case_statement}, snapshot_time DESC
+                ORDER BY {priority_case_statement}, snapshot_time DESC,length(product_title)
             ) as rn
         FROM source_data
     ),
@@ -331,11 +329,9 @@ def dumper_daily_sku(spark, calc_partition):
             CAST(NULL AS INT) as category_9_id, CAST(NULL AS STRING) as category_9_name,
             d.seller, d.seller_id, d.first_image, d.imags, d.video,
             d.specifications, d.additional_description, 
-            COALESCE(ejc.extra_json_list, ARRAY()) as extra_json,
+            d.extra_json,
             d.etl_source, d.snapshot_time, d.region, d.dt
         FROM deduplicated d
-        LEFT JOIN extra_json_collected ejc ON d.sku_id = ejc.sku_id 
-            AND d.region = ejc.region AND d.dt = ejc.dt
     )
      
     SELECT * FROM final_result
@@ -390,8 +386,9 @@ def dumper_daily_sku(spark, calc_partition):
         merged_json_df["merged_extra_json"]
     ).withColumn(
         "extra_json", 
-        when(col("merged_extra_json").isNotNull(), col("merged_extra_json"))
-        .otherwise(col("extra_json").cast("string"))
+        when(col("merged_extra_json").isNotNull() & (col("merged_extra_json") != "{}"), col("merged_extra_json"))
+        .otherwise(when(col("extra_json").isNotNull() & (col("extra_json") != "{}"), col("extra_json"))
+        .otherwise(lit(None)))
     ).drop("merged_extra_json")
     
     return final_df
@@ -439,7 +436,7 @@ def main():
     
     # 性能优化配置
     spark.sql(f'SET spark.sql.shuffle.partitions={PARTITION_NUM}')
-    spark.conf.set("spark.sql.adaptive.enabled", "true")
+    # spark.conf.set("spark.sql.adaptive.enabled", "true")
     spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", "true")
     spark.conf.set("spark.sql.adaptive.skewJoin.enabled", "true")
     spark.conf.set("spark.sql.adaptive.localShuffleReader.enabled", "true")
@@ -452,32 +449,9 @@ def main():
     
     # 关闭Spark会话
     spark.stop()
-    # impala.execute(f"invalidate metadata {TARGET_DB}.{TARGET_TABLE}")
-    # impala.execute(f"DROP INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE} PARTITION(dt='{CALC_PARTITION}')")
-    # impala.execute(f"COMPUTE INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE}")
-    # 刷新元数据和统计信息
-    try:
-        print(f"开始刷新元数据: {TARGET_DB}.{TARGET_TABLE}")
-        impala.execute(f"invalidate metadata {TARGET_DB}.{TARGET_TABLE}")
-        print("✅ invalidate metadata 成功")
-        
-        print(f"删除分区统计信息: dt='{CALC_PARTITION}'")
-        impala.execute(f"DROP INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE} PARTITION(dt='{CALC_PARTITION}')")
-        print("✅ DROP INCREMENTAL STATS 成功")
-        
-        print("重新计算统计信息...")
-        impala.execute(f"COMPUTE INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE}")
-        print("✅ COMPUTE INCREMENTAL STATS 成功")
-        
-    except Exception as e:
-        print(f"❌ 元数据刷新失败: {e}")
-    
-    finally:
-        # 确保连接关闭
-        try:
-            impala.close()
-        except:
-            pass
+    impala.execute(f"{{ refresh }} {TARGET_DB}.{TARGET_TABLE}")
+    impala.execute(f"DROP INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE} PARTITION(dt='{CALC_PARTITION}')")
+    impala.execute(f"COMPUTE INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE}")
 
 if __name__ == "__main__":
     exit(main())

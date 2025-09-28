@@ -267,11 +267,16 @@ def dumper_menu_v1(spark, calc_partition, table_config):
             project,
             crawl_status,
             
-            concat('{"expected_delivery_time":"', 
-                   coalesce(expected_delivery_time, ''),
-                   '","delivery_destination":"',
-                   coalesce(delivery_destination, ''),
-                   '"}') as extra_json,
+            CASE 
+                WHEN expected_delivery_time IS NOT NULL AND expected_delivery_time != ''
+                     OR delivery_destination IS NOT NULL AND delivery_destination != ''
+                THEN concat('{"expected_delivery_time":"', 
+                           coalesce(expected_delivery_time, ''),
+                           '","delivery_destination":"',
+                           coalesce(delivery_destination, ''),
+                           '"}')
+                ELSE NULL
+            END as extra_json,
             
             snapshot_time,
             
@@ -496,7 +501,7 @@ def dumper_menu_detail_v1(spark, calc_partition, table_config):
             project,
             crawl_status,
             
-            '{}' as extra_json,
+            NULL as extra_json,
             
             snapshot_time,
             
@@ -671,7 +676,7 @@ def dumper_search_only_v1(spark, calc_partition, table_config):
             CAST(NULL AS STRING) as project,
             crawl_status,
             
-            '{}' as extra_json,
+            NULL as extra_json,
             snapshot_time,
             
             CASE 

@@ -32,25 +32,25 @@
 | **category** | string | category |
 | **sub_category** | string | sub_category (用对应category的那一整条数据中的sub_category) |
 | **category_id** | string | 留空 |
-| **category_name** | string | 最后一个> 后面的 |
+| **category_name** | string | sub_category最后一个> 后面的  |
 | **category_1_id** | int | 留空 |
-| **category_1_name** | string | 留空 |
+| **category_1_name** | string | category |
 | **category_2_id** | int | 留空 |
-| **category_2_name** | string | split_part(sub_category,'>',1) 如果没有则为留空 |
+| **category_2_name** | string | split(sub_category,'>')[0] 如果没有则为留空 |
 | **category_3_id** | int | 留空 |
-| **category_3_name** | string | split_part(sub_category,'>',2) 如果没有则为留空 |
+| **category_3_name** | string | split(sub_category,'>')[1] 如果没有则为留空 |
 | **category_4_id** | int | 留空 |
-| **category_4_name** | string | split_part(sub_category,'>',3) 如果没有则为留空 |
+| **category_4_name** | string | split(sub_category,'>')[2] 如果没有则为留空 |
 | **category_5_id** | int | 留空 |
-| **category_5_name** | string | split_part(sub_category,'>',4) 如果没有则为留空 |
+| **category_5_name** | string | split(sub_category,'>')[3] 如果没有则为留空 |
 | **category_6_id** | int | 留空 |
-| **category_6_name** | string | split_part(sub_category,'>',5) 如果没有则为留空 |
+| **category_6_name** | string | split(sub_category,'>')[4] 如果没有则为留空 |
 | **category_7_id** | int | 留空 |
-| **category_7_name** | string | split_part(sub_category,'>',6) 如果没有则为留空 |
+| **category_7_name** | string | split(sub_category,'>')[5] 如果没有则为留空 |
 | **category_8_id** | int | 留空 |
-| **category_8_name** | string | split_part(sub_category,'>',7) 如果没有则为留空 |
+| **category_8_name** | string | split(sub_category,'>')[6] 如果没有则为留空 |
 | **category_9_id** | int | 留空 |
-| **category_9_name** | string | split_part(sub_category,'>',8) 如果没有则为留空 |
+| **category_9_name** | string | split(sub_category,'>')[7] 如果没有则为留空 |
 | **seller** | string | seller |
 | **seller_id** | string | seller_id |
 | **first_image** | string | first_image |
@@ -86,21 +86,21 @@
   - `category_1`: 留空 
   - `category_1_name`: category
   - `category_2`: 留空 
-  - `category_2_name`: `split_part(sub_category,'>',1)` 如果没有则为留空
-  - `category_3`: 留空
-  - `category_3_name`: `split_part(sub_category,'>',2)` 如果没有则为留空
-  - `category_4`: 留空
-  - `category_4_name`: `split_part(sub_category,'>',3)` 如果没有则为留空
-  - `category_5`: 留空
-  - `category_5_name`: `split_part(sub_category,'>',4)` 如果没有则为留空
-  - `category_6`: 留空
-  - `category_6_name`: `split_part(sub_category,'>',5)` 如果没有则为留空
-  - `category_7`: 留空
-  - `category_7_name`: `split_part(sub_category,'>',6)` 如果没有则为留空
-  - `category_8`: 留空
-  - `category_8_name`: `split_part(sub_category,'>',7)` 如果没有则为留空
-  - `category_9`: 留空
-  - `category_9_name`: `split_part(sub_category,'>',8)` 如果没有则为留空
+  - `category_2_name`: `split(sub_category,'>')[0]` 如果没有则为留空
+  - `category_3`: 留空 
+  - `category_3_name`: `split(sub_category,'>')[1]` 如果没有则为留空
+  - `category_4`: 留空 
+  - `category_4_name`: `split(sub_category,'>')[2]` 如果没有则为留空
+  - `category_5`: 留空 
+  - `category_5_name`: `split(sub_category,'>')[3]` 如果没有则为留空
+  - `category_6`: 留空 
+  - `category_6_name`: `split(sub_category,'>')[4]` 如果没有则为留空
+  - `category_7`: 留空 
+  - `category_7_name`: `split(sub_category,'>')[5]` 如果没有则为留空
+  - `category_8`: 留空 
+  - `category_8_name`: `split(sub_category,'>')[6]` 如果没有则为留空
+  - `category_9`: 留空 
+  - `category_9_name`: `split(sub_category,'>')[7]` 如果没有则为留空
 
 - **dt**: 取最小值 `min(dt) group by sku_id`
 
@@ -125,8 +125,9 @@
 3. **字段选择**: 基于非空非""条件选择最新记录
 4. **时间逻辑**: 正确处理 `first_snapshot_dt` 和 `last_snapshot_time`
 5. **category拆分逻辑**: 
-   - 使用 `split_part(sub_category,'>',N)` 函数按'>'分割sub_category
-   - 分割位置1-8对应category_2_name到category_9_name
+   - 使用 `split(sub_category,'>')[N]` 函数按'>'分割sub_category
+   - 分割位置0-7对应category_2_name到category_9_name
    - 如果分割结果为空，则字段留空
    - 所有category_X_id字段全部留空
+   - 使用 `size(split(sub_category, '>')) > N+1` 检查数组边界
 6. **数据验证**: 确保sub_category格式正确，包含足够的'>'分隔符

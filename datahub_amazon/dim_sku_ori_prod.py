@@ -285,50 +285,50 @@ def dumper(spark, calc_partition):
             CAST(NULL AS INT) as category_2_id,
             -- 从sub_category分割获取各层级分类名称
             CASE 
-                WHEN sub_category IS NOT NULL AND sub_category != '' AND size(split(sub_category, '>')) > 1
-                THEN split(sub_category, '>')[1]
+                WHEN sub_category IS NOT NULL AND sub_category != '' AND size(split(sub_category, '>')) >= 1
+                THEN split(sub_category, '>')[0]
                 ELSE NULL 
             END as category_2_name,
             CAST(NULL AS INT) as category_3_id,
             CASE 
-                WHEN sub_category IS NOT NULL AND sub_category != '' AND size(split(sub_category, '>')) > 2
-                THEN split(sub_category, '>')[2]
+                WHEN sub_category IS NOT NULL AND sub_category != '' AND size(split(sub_category, '>')) >= 2
+                THEN split(sub_category, '>')[1]
                 ELSE NULL 
             END as category_3_name,
             CAST(NULL AS INT) as category_4_id,
             CASE 
-                WHEN sub_category IS NOT NULL AND sub_category != '' AND size(split(sub_category, '>')) > 3
-                THEN split(sub_category, '>')[3]
+                WHEN sub_category IS NOT NULL AND sub_category != '' AND size(split(sub_category, '>')) >= 3
+                THEN split(sub_category, '>')[2]
                 ELSE NULL 
             END as category_4_name,
             CAST(NULL AS INT) as category_5_id,
             CASE 
-                WHEN sub_category IS NOT NULL AND sub_category != '' AND size(split(sub_category, '>')) > 4
-                THEN split(sub_category, '>')[4]
+                WHEN sub_category IS NOT NULL AND sub_category != '' AND size(split(sub_category, '>')) >= 4
+                THEN split(sub_category, '>')[3]
                 ELSE NULL 
             END as category_5_name,
             CAST(NULL AS INT) as category_6_id,
             CASE 
-                WHEN sub_category IS NOT NULL AND sub_category != '' AND size(split(sub_category, '>')) > 5
-                THEN split(sub_category, '>')[5]
+                WHEN sub_category IS NOT NULL AND sub_category != '' AND size(split(sub_category, '>')) >= 5
+                THEN split(sub_category, '>')[4]
                 ELSE NULL 
             END as category_6_name,
             CAST(NULL AS INT) as category_7_id,
             CASE 
-                WHEN sub_category IS NOT NULL AND sub_category != '' AND size(split(sub_category, '>')) > 6
-                THEN split(sub_category, '>')[6]
+                WHEN sub_category IS NOT NULL AND sub_category != '' AND size(split(sub_category, '>')) >= 6
+                THEN split(sub_category, '>')[5]
                 ELSE NULL 
             END as category_7_name,
             CAST(NULL AS INT) as category_8_id,
             CASE 
-                WHEN sub_category IS NOT NULL AND sub_category != '' AND size(split(sub_category, '>')) > 7
-                THEN split(sub_category, '>')[7]
+                WHEN sub_category IS NOT NULL AND sub_category != '' AND size(split(sub_category, '>')) >= 7
+                THEN split(sub_category, '>')[6]
                 ELSE NULL 
             END as category_8_name,
             CAST(NULL AS INT) as category_9_id,
             CASE 
-                WHEN sub_category IS NOT NULL AND sub_category != '' AND size(split(sub_category, '>')) > 8
-                THEN split(sub_category, '>')[8]
+                WHEN sub_category IS NOT NULL AND sub_category != '' AND size(split(sub_category, '>')) >= 8
+                THEN split(sub_category, '>')[7]
                 ELSE NULL 
             END as category_9_name,  
             seller,
