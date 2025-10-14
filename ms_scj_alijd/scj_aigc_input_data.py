@@ -5,7 +5,7 @@ SCJ AIGC输入数据脚本：基于monthly_sales_wide生成scj_aigc_input_data�
 1. 从monthly_sales_wide和std_mapping表获取基础数据，应用品类过滤条件
 2. 基于item_title和pfsku_title生成hash_id用于month_start计算
 3. 计算top80字段：按platform、month_dt分组，按pfsku_value_sales降序计算累计占比
-4. 计算month_start字段：setup阶段统一为2022-07-01，ongoing阶段基于hash_id比较
+4. 计算month_start字段：从2022-07开始，按platform、item_id、pfsku_id判断当前月份hash_id是否与历史月份去重month_start对应的hash_id相等，相等时使用历史month_start，否则使用当前月份
 5. 输出到scj_aigc_input_data表，按month_dt分区存储
 
 增量全量模式说明：
@@ -19,6 +19,7 @@ SCJ AIGC输入数据脚本：基于monthly_sales_wide生成scj_aigc_input_data�
 """
 
 import hashlib
+from typing import Optional
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import udf, col, when, isnan, isnull, sum as spark_sum, row_number, lag
 from pyspark.sql.types import StringType, DoubleType
@@ -53,7 +54,7 @@ else:
 
 
 # Hash函数定义
-def _generate_hash_id(item_title: str, pfsku_title: str) -> str:
+def generate_hash_id(item_title: Optional[str], pfsku_title: Optional[str]) -> str:
     """
     生成hash ID
     需要strip一下，原始标题有制表符，还有换行及多个空格
@@ -105,12 +106,11 @@ CREATE TABLE IF NOT EXISTS {result_table} (
     month_start STRING,
     hash_id STRING
 ) PARTITIONED BY (month_dt STRING) STORED AS PARQUET
-TBLPROPERTIES ('parquet.compression'='GZIP')
 '''
 
 
 # 注册UDF函数
-generate_hash_id_udf = udf(_generate_hash_id, StringType())
+generate_hash_id_udf = udf(generate_hash_id, StringType())
 
 # 基础数据查询 - 包含所有过滤条件
 base_query = f'''
@@ -195,74 +195,78 @@ SELECT
 FROM base_data_with_hash
 '''
 
-# 计算month_start字段 - 分两步处理：先处理第一步，再基于hash_id修正
+# 计算month_start字段 - 从2022-07开始，基于hash_id匹配历史month_start
 month_start_query = '''
-WITH hash_comparison AS (
+WITH data_with_top80 AS (
   SELECT 
-    platform, item_id, pfsku_id, month_dt, hash_id, top80,
-    item_title, pfsku_title, first_image, 
-    pfsku_image, category_name, shop_name, brand_name, item_url, 
-    pfsku_url, tags, pfsku_value_sales, pfsku_unit_sales, pfsku_discount_price
+      *,
+      SUM(pfsku_value_sales) OVER (
+          PARTITION BY platform, month_dt 
+          ORDER BY pfsku_value_sales DESC 
+          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+      ) / SUM(pfsku_value_sales) OVER (PARTITION BY platform, month_dt) AS top80
+  FROM base_data_with_hash
+),
+-- 获取历史数据中每个platform、item_id、pfsku_id的去重month_start和对应hash_id
+historical_hash_mapping AS (
+  SELECT DISTINCT
+    platform, item_id, pfsku_id, month_start, hash_id
   FROM (
     SELECT 
-        *,
-        SUM(pfsku_value_sales) OVER (
-            PARTITION BY platform, month_dt 
-            ORDER BY pfsku_value_sales DESC 
-            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-        ) / SUM(pfsku_value_sales) OVER (PARTITION BY platform, month_dt) AS top80
-    FROM base_data_with_hash
+      platform, item_id, pfsku_id, month_start, hash_id,
+      ROW_NUMBER() OVER (
+        PARTITION BY platform, item_id, pfsku_id, month_start 
+        ORDER BY month_dt DESC
+      ) as rn
+    FROM ms_scj_alijd.scj_aigc_input_data
+    WHERE month_dt >= '2022-07-01'
+      AND month_dt < (SELECT MIN(month_dt) FROM data_with_top80)
   ) t
+  WHERE rn = 1
+),
+-- 计算当前数据的month_start
+current_data_with_history AS (
+  SELECT 
+    d.*,
+    h.month_start as matched_month_start
+  FROM data_with_top80 d
+  LEFT JOIN historical_hash_mapping h ON (
+    d.platform = h.platform 
+    AND d.item_id = h.item_id 
+    AND d.pfsku_id = h.pfsku_id 
+    AND d.hash_id = h.hash_id
+  )
 ),
 month_start_calculation AS (
   SELECT 
     *,
-    LAG(hash_id) OVER (
+    -- 按时间顺序计算month_start
+    LAG(month_start) OVER (
       PARTITION BY platform, item_id, pfsku_id 
       ORDER BY month_dt
-    ) AS prev_hash_id,
-    LAG(month_dt) OVER (
-      PARTITION BY platform, item_id, pfsku_id 
-      ORDER BY month_dt
-    ) AS prev_month_dt,
-    -- 第一步：先处理month_start的初始值
-    CASE 
-      WHEN month_dt <= '2025-08-01' THEN '2022-07-01'
-      ELSE month_dt
-    END AS initial_month_start
-  FROM hash_comparison
-),
-month_start_final AS (
-  SELECT 
-    *,
-    -- 第二步：基于hash_id比较修正month_start
-    CASE 
-      WHEN month_dt <= '2025-08-01' THEN initial_month_start
-      WHEN month_dt >= '2025-09-01' AND hash_id = prev_hash_id AND prev_month_dt IS NOT NULL THEN 
-        -- 如果hash_id相等，继承邻近月份的month_start（被第一步处理之后的值）
-        LAG(initial_month_start) OVER (
-          PARTITION BY platform, item_id, pfsku_id 
-          ORDER BY month_dt
-        )
-      ELSE initial_month_start
-    END AS month_start
-  FROM month_start_calculation
+    ) AS prev_month_start
+  FROM current_data_with_history
 )
 SELECT 
     platform, item_id, pfsku_id, item_title, pfsku_title, first_image,
     pfsku_image, category_name, shop_name, brand_name, item_url,
     pfsku_url, tags, pfsku_value_sales, pfsku_unit_sales, pfsku_discount_price,
     top80,
-    month_start,
+    -- month_start逻辑：如果有匹配的历史month_start则使用，否则使用当前月份
+    CASE 
+      WHEN matched_month_start IS NOT NULL THEN matched_month_start
+      WHEN prev_month_start IS NOT NULL THEN prev_month_start
+      ELSE month_dt
+    END AS month_start,
     hash_id,
     month_dt
-FROM month_start_final
+FROM month_start_calculation
 '''
 
 final_df = spark.sql(month_start_query)
 # 最终数据repartition到合理分区数，减少小文件数量
 # 根据数据量动态调整：增量模式用较少分区，全量模式用较多分区
-repartition_num = 2 if update_mode == 'incremental' else 10
+repartition_num = 2 if update_mode == 'incremental' else 8
 final_df = final_df.repartition(repartition_num)
 final_df.createOrReplaceTempView('final_data')
 
