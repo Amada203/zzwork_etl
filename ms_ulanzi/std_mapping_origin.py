@@ -6,6 +6,8 @@ from pigeon.connector import new_impala_connector
 from pigeon.utils import init_logging
 from pyspark.sql import SparkSession
 from pyspark.sql.dataframe import DataFrame
+from pyspark.sql.functions import udf, concat_ws, col, xxhash64
+from pyspark.sql.types import LongType
 from spark_util.insert import spark_write_hive
 
 TARGET_DB = '{{ std_mapping_origin }}'.split('.')[0]
@@ -16,18 +18,20 @@ EMR = True
 PARTITION_NUM = 600
 COMPRESSION = 'gzip'
 
+# 使用Spark原生xxhash64函数，性能更好且无冲突
+
 update_mode = '{{ update_mode }}'
 project_start_month = '{{ project_start_month }}'
 unit_weight_threshold = {{ unit_weight_threshold }}
 
 if update_mode == 'incremental':
-    month_field = ',month_dt'
-    month_condition = f'month_dt = "{CALC_PARTITION}"'
+    month_field = ',a.month_dt'
+    month_condition = f'a.month_dt = "{CALC_PARTITION}"'
     month_partition = f'month_dt = "{CALC_PARTITION}"'
     drop_incremental_stats = f'DROP INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE} PARTITION(month_dt="{CALC_PARTITION}");'
 elif update_mode == 'full':
-    month_field = ',month_dt'
-    month_condition = 'month_dt IS NOT NULL'
+    month_field = ',a.month_dt'
+    month_condition = 'a.month_dt IS NOT NULL'
     month_partition = 'month_dt'
     drop_incremental_stats = f'DROP INCREMENTAL STATS {TARGET_DB}.{TARGET_TABLE};'
 
@@ -109,7 +113,7 @@ CREATE TABLE IF NOT EXISTS {TARGET_DB}.{TARGET_TABLE}(
   category_4_cn    STRING,
   category_5_cn    STRING,
   category_6_cn    STRING
-) COMMENT '合并标注和attributes属性表'
+) 
 PARTITIONED BY (month_dt STRING)
 STORED AS PARQUET
 """
@@ -122,7 +126,7 @@ def dumper(spark) -> DataFrame:
     # 构建完整的查询
     query = f"""
     /* 标注数据 */
-    SELECT FNV_HASH(concat_ws('|', a.platform, COALESCE(a.market, 'cn'), CAST(a.item_id AS STRING), CAST(a.pfsku_id AS STRING), CAST(1 AS STRING), a.month_dt, CAST(NVL(a.shop_id, '0') AS STRING))) AS unique_id,
+    SELECT CAST(xxhash64(concat_ws('||', a.platform, COALESCE(a.market, 'cn'), CAST(a.item_id AS STRING), CAST(a.pfsku_id AS STRING), '1', a.month_dt, CAST(NVL(a.shop_id, '0') AS STRING))) AS BIGINT) AS unique_id,
            a.platform,
            COALESCE(a.market, 'cn') AS market,
            CAST(a.item_id AS STRING) AS item_id,
@@ -220,7 +224,7 @@ def dumper(spark) -> DataFrame:
     UNION ALL
 
     /* 非标注数据，留到下一步清洗 */
-    SELECT FNV_HASH(concat_ws('|', a.platform, COALESCE(a.market, 'cn'), CAST(a.item_id AS STRING), CAST(a.pfsku_id AS STRING), CAST(1 AS STRING), a.month_dt, CAST(NVL(a.shop_id, '0') AS STRING))) AS unique_id,
+    SELECT CAST(xxhash64(concat_ws('||', a.platform, COALESCE(a.market, 'cn'), CAST(a.item_id AS STRING), CAST(a.pfsku_id AS STRING), '1', a.month_dt, CAST(NVL(a.shop_id, '0') AS STRING))) AS BIGINT) AS unique_id,
            a.platform,
            COALESCE(a.market, 'cn') AS market,
            CAST(a.item_id AS STRING) AS item_id,
@@ -309,7 +313,7 @@ def dumper(spark) -> DataFrame:
            CAST(NULL AS STRING) AS std_spu_name_src
 
            {month_field}
-    FROM {{ monthly_basic_info }} a LEFT anti
+    FROM {{ monthly_basic_info }} a LEFT ANTI
     JOIN {{ pfsku_package_splited }} b ON lower(a.platform) = lower(b.platform)
     AND CAST(a.item_id AS STRING) = b.item_id
     AND CAST(a.pfsku_id AS STRING) = b.pfsku_id
@@ -340,9 +344,12 @@ def main():
     impala = new_impala_connector(emr=True)
     spark = (SparkSession.builder.appName("rearc.{{dag_name}}.{{job_name}}.{{execution_date}}")
              .enableHiveSupport().getOrCreate())
+    
+    # 性能优化配置
     spark.sql(f'set spark.sql.shuffle.partitions={PARTITION_NUM}')
     spark.sql(f'set spark.sql.autoBroadcastJoinThreshold=-1')
     spark.sql(f'set spark.sql.broadcastTimeout=600')
+
 
     df = dumper(spark)
     loader(spark, df)
