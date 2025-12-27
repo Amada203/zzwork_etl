@@ -6,6 +6,8 @@ import json
 
 from collections import OrderedDict
 from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from pyspark.sql import Window
 from pigeon.connector import new_impala_connector
 from ymrbdt.attributes import read_rule_set
 
@@ -259,6 +261,7 @@ SELECT s.platform,
        s.pfsku_value_sales,
        s.pfsku_unit_sales,
        s.pfsku_discount_price,
+       null as top80_category,
        s.month_dt
 FROM {source_table} s
 WHERE {month_condition}
@@ -317,6 +320,7 @@ SCHEMA = '''
   pfsku_value_sales           DOUBLE,
   pfsku_unit_sales            INT,
   pfsku_discount_price        DOUBLE,
+  top80_category              DOUBLE,
   month_dt                    STRING
 '''
 
@@ -373,7 +377,8 @@ CREATE TABLE IF NOT EXISTS {result_table} (
     attribute_src STRING,
     pfsku_value_sales DOUBLE,
     pfsku_unit_sales INT,
-    pfsku_discount_price DOUBLE
+    pfsku_discount_price DOUBLE,
+    top80_category DOUBLE
 ) PARTITIONED BY (month_dt STRING) 
 COMMENT 'AIGC结果数据清洗表' 
 STORED AS PARQUET
@@ -382,7 +387,37 @@ STORED AS PARQUET
 # 执行数据转换
 rdd = spark.sql(query).repartition(200).rdd.mapPartitions(apply_transformation)
 df = spark.createDataFrame(rdd, SCHEMA)
-df.repartition(2).createOrReplaceTempView('tv_dwd_aigc_result_data')
+# df.repartition(2).createOrReplaceTempView('tv_dwd_aigc_result_data')
+
+category_partition_cols = ['platform', 'month_dt', 'std_category_1', 'std_category_2', 'std_category_3']
+category_total_window = Window.partitionBy(*category_partition_cols)
+category_order_cols = [
+    F.col('pfsku_value_sales').desc(),
+    F.col('item_id').asc(),
+    F.col('pfsku_id').asc()
+]
+category_cum_window = (
+    Window.partitionBy(*category_partition_cols)
+    .orderBy(*category_order_cols)
+    .rowsBetween(Window.unboundedPreceding, Window.currentRow)
+)
+
+df_with_category_top80 = (
+    df
+    .withColumn('pfsku_value_sales_decimal', F.col('pfsku_value_sales').cast('decimal(38,16)'))
+    .withColumn('category_total_sales', F.sum(F.col('pfsku_value_sales_decimal')).over(category_total_window))
+    .withColumn('category_cum_sales', F.sum(F.col('pfsku_value_sales_decimal')).over(category_cum_window))
+    .withColumn(
+        'top80_category',
+        F.when(
+            (F.col('category_total_sales').isNull()) | (F.col('category_total_sales') == F.lit(0)),
+            F.lit(None)
+        ).otherwise((F.col('category_cum_sales') / F.col('category_total_sales')).cast('double'))
+    )
+    .drop('pfsku_value_sales_decimal', 'category_total_sales', 'category_cum_sales')
+)
+
+df_with_category_top80.repartition(2).createOrReplaceTempView('tv_dwd_aigc_result_data')
 
 # 创建目标表
 spark.sql(DDL)
@@ -442,7 +477,8 @@ SELECT platform,
        attribute_src,
        pfsku_value_sales,
        pfsku_unit_sales,
-       pfsku_discount_price
+       pfsku_discount_price,
+       top80_category
        {month_field}
 FROM tv_dwd_aigc_result_data
 ''')
