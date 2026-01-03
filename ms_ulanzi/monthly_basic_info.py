@@ -93,13 +93,17 @@ def spark_sql_with_log(spark, query):
 
 def dumper(spark):
     # 构建平台查询列表
-    platform_queries = []
+    platform_queries = [] 
     
     if 'Tmall' in platform_lst:
         platform_queries.append(f"""
         SELECT 'Tmall' as platform,
-               item_id,
-               pfsku_id,
+               CAST(item_id AS STRING) AS item_id,
+               CAST(CASE 
+                   WHEN category_id IN (150704, 50012587) OR category_name IN ('手机保护套/壳', '手机贴膜')
+                   THEN 0
+                   ELSE pfsku_id
+               END AS STRING) AS pfsku_id,
                'cn' AS market,
                item_title,
                pfsku_title,
@@ -193,7 +197,7 @@ def dumper(spark):
                category_3_cn,
                category_4_cn,
                category_5_cn,
-               category_6_cn
+               CAST(NULL AS STRING) AS category_6_cn
                {month_field}
         FROM {{ amazon_monthly_basic_info }}
         WHERE {month_condition}
@@ -202,9 +206,9 @@ def dumper(spark):
     if 'JD' in platform_lst:
         platform_queries.append(f"""
         SELECT 'JD' as platform,
-               item_id,
-               item_id AS pfsku_id,
-               CAST(NULL AS STRING) AS market,
+               CAST(item_id AS STRING) AS item_id,
+               CAST(item_id AS STRING) AS pfsku_id,
+               'cn' AS market,
                item_title,
                pfsku_title,
                category_1,
@@ -254,9 +258,9 @@ def dumper(spark):
     if 'PDD' in platform_lst:
         platform_queries.append(f"""
         SELECT 'PDD' as platform,
-               item_id,
-               item_id AS pfsku_id,
-               CAST(NULL AS STRING) AS market,
+               CAST(item_id AS STRING) AS item_id,
+               CAST(item_id AS STRING) AS pfsku_id,
+               'cn' AS market,
                item_title,
                CAST(NULL AS STRING) AS pfsku_title,
                category_1,
@@ -306,9 +310,9 @@ def dumper(spark):
     if 'Suning' in platform_lst:
         platform_queries.append(f"""
         SELECT 'Suning' as platform,
-               item_id,
-               item_id AS pfsku_id,
-               CAST(NULL AS STRING) AS market,
+               CAST(item_id AS STRING) AS item_id,
+               CAST(item_id AS STRING) AS pfsku_id,
+               'cn' AS market,
                item_title,
                CAST(NULL AS STRING) AS pfsku_title,
                category_1_name AS category_1,
@@ -358,8 +362,8 @@ def dumper(spark):
     if 'Taobao' in platform_lst:
         platform_queries.append(f"""
         SELECT 'Taobao' as platform,
-               item_id,
-               item_id AS pfsku_id,
+               CAST(item_id AS STRING) AS item_id,
+               CAST(item_id AS STRING) AS pfsku_id,
                'cn' AS market,
                item_title,
                CAST(NULL AS STRING) AS pfsku_title,
@@ -410,9 +414,9 @@ def dumper(spark):
     if 'VIP' in platform_lst:
         platform_queries.append(f"""
         SELECT 'VIP' as platform,
-               item_id,
-               item_id AS pfsku_id,
-               CAST(NULL AS STRING) AS market,
+               CAST(item_id AS STRING) AS item_id,
+               CAST(item_id AS STRING) AS pfsku_id,
+               'cn' AS market,
                item_title,
                CAST(NULL AS STRING) AS pfsku_title,
                category_1,
@@ -464,7 +468,7 @@ def dumper(spark):
         SELECT 'Douyin' as platform,
                cast(item_id as string) as item_id,
                cast(item_id as string) AS pfsku_id,
-               CAST(NULL AS STRING) AS market,
+               'cn' AS market,
                item_title,
                CAST(NULL AS STRING) AS pfsku_title,
                category_1_name as category_1,
@@ -516,7 +520,7 @@ def dumper(spark):
         SELECT 'Kaola' as platform,
                cast(item_id as string) as item_id,
                cast(item_id as string) AS pfsku_id,
-               CAST(NULL AS STRING) AS market,
+               'cn' AS market,
                item_title,
                CAST(NULL AS STRING) AS pfsku_title,
                category_1 as category_1,
@@ -566,9 +570,9 @@ def dumper(spark):
     if 'Kuaishou' in platform_lst:
         platform_queries.append(f"""
         SELECT 'Kuaishou' as platform,
-               item_id,
-               item_id AS pfsku_id,
-               CAST(NULL AS STRING) AS market,
+               CAST(item_id AS STRING) AS item_id,
+               CAST(item_id AS STRING) AS pfsku_id,
+               'cn' AS market,
                item_title,
                CAST(NULL AS STRING) AS pfsku_title,
                category_1,
@@ -618,9 +622,9 @@ def dumper(spark):
     # 添加 patch 表查询
     platform_queries.append(f"""
     SELECT platform,
-           item_id,
-           pfsku_id,
-           CAST(NULL AS STRING) AS market,
+           CAST(item_id AS STRING) AS item_id,
+           CAST(pfsku_id AS STRING) AS pfsku_id,
+           COALESCE(market, 'cn') AS market,
            item_title,
            pfsku_title,
            category_1,

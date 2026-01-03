@@ -153,7 +153,8 @@ def dumper(spark) -> DataFrame:
            a.shop_type,
            a.brand_id,
            a.brand_name,
-           c.std_brand_name AS ai_brand_name,
+           --c.std_brand_name AS ai_brand_name,
+           coalesce(d.std_brand_name, a.brand_name)AS ai_brand_name,
            a.properties,
            a.shop_url,
            a.item_url,
@@ -176,7 +177,7 @@ def dumper(spark) -> DataFrame:
 
            -- SKU计算字段：使用标注结果
            b.sku_no,
-           CAST(COUNT(b.sku_no) OVER (PARTITION BY a.month_dt, a.platform, CAST(a.item_id AS STRING), CAST(a.pfsku_id AS STRING), a.shop_id) AS INT) AS sku_num,
+           CAST(COUNT(b.sku_no) OVER (PARTITION BY a.month_dt, a.platform, CAST(a.item_id AS STRING), CAST(a.pfsku_id AS STRING), a.shop_id,a.market) AS INT) AS sku_num,
            CAST(NULL AS STRING) AS sku_image,
            b.sku_title,
            CAST(NULL AS DOUBLE) AS sku_value_ratio,
@@ -218,6 +219,13 @@ def dumper(spark) -> DataFrame:
     LEFT JOIN dw_brand_mapping.final_result c ON c.platform = 'Tmall' 
     AND a.brand_id = CAST(c.brand_id AS STRING)
     AND a.category_1 = CAST(c.category_1 AS STRING)
+    LEFT JOIN {{ datahub_dwd_gpt_brand_info_monthly }} d ON a.pfsku_id = d.sku_id
+    -- 动态关联键1：平台匹配 (Amazon用market, 其他用platform)
+    AND (CASE WHEN lower(a.platform) = 'amazon' THEN lower(a.market) ELSE lower(a.platform) END) = lower(d.platform)
+    -- 动态关联键2：商品ID匹配 (Amazon用pfsku_id, 其他用item_id)
+    AND (CASE WHEN lower(a.platform) = 'amazon' THEN a.pfsku_id ELSE a.item_id END) = d.product_id
+    -- 动态日期匹配：Amazon不关联month_dt，其他关联
+    AND (lower(a.platform) = 'amazon' OR a.month_dt = d.month_dt)
     WHERE b.item_id IS NOT NULL
     AND {month_condition}
 
@@ -251,7 +259,8 @@ def dumper(spark) -> DataFrame:
            a.shop_type,
            a.brand_id,
            a.brand_name,
-           c.std_brand_name AS ai_brand_name,
+           --c.std_brand_name AS ai_brand_name, 
+           coalesce(e.std_brand_name, a.brand_name)AS ai_brand_name,
            a.properties,
            a.shop_url,
            a.item_url,
@@ -274,7 +283,7 @@ def dumper(spark) -> DataFrame:
 
            -- SKU计算字段：使用monthly_attributes逻辑 + GPT重量清洗
            1 AS sku_no,
-           CAST(COUNT(1) OVER (PARTITION BY a.month_dt, a.platform, CAST(a.item_id AS STRING), CAST(a.pfsku_id AS STRING), a.shop_id) AS INT) AS sku_num,
+           CAST(COUNT(1) OVER (PARTITION BY a.month_dt, a.platform, CAST(a.item_id AS STRING), CAST(a.pfsku_id AS STRING), a.shop_id,a.market) AS INT) AS sku_num,
            CAST(NULL AS STRING) AS sku_image,
            CASE 
                WHEN a.pfsku_title IS NOT NULL AND a.pfsku_title != '' AND a.pfsku_title != 'null'
@@ -326,6 +335,13 @@ def dumper(spark) -> DataFrame:
     AND CAST(a.item_id AS STRING) = CAST(d.product_id AS STRING)
     AND CAST(a.pfsku_id AS STRING) = CAST(d.sku_id AS STRING)
     AND a.month_dt = d.month_dt  
+    LEFT JOIN {{ datahub_dwd_gpt_brand_info_monthly }} e ON a.pfsku_id = e.sku_id
+    -- 动态关联键1：平台匹配
+    AND (CASE WHEN lower(a.platform) = 'amazon' THEN lower(a.market) ELSE lower(a.platform) END) = lower(e.platform)
+    -- 动态关联键2：商品ID匹配
+    AND (CASE WHEN lower(a.platform) = 'amazon' THEN a.pfsku_id ELSE a.item_id END) = e.product_id
+    -- 动态日期匹配：Amazon不关联month_dt，其他关联
+    AND (lower(a.platform) = 'amazon' OR a.month_dt = e.month_dt)
     WHERE {month_condition}
     """
     
